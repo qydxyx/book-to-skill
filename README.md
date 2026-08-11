@@ -1,300 +1,129 @@
-<p align="center">
-  <img src="docs/assets/banner.webp" alt="Booklin, the book-to-skill wizard, holding an open book whose pages scatter into sparkles that settle into an ordered grid" width="100%">
-</p>
-
 <h1 align="center">book-to-skill</h1>
 
 <p align="center">
-  <strong>Turn any technical book, document folder, or collection of sources into a unified agent skill — including tables, figures, charts, and diagrams — ready to study, reference, and use while you work in GitHub Copilot CLI, Amp, or Claude Code.</strong>
+  <strong>Turn books and docs into structured agent skills</strong> — frameworks, tables, figures, and charts your agent loads on demand (Copilot CLI, Amp, Claude Code).
 </p>
 
 <p align="center">
-  <a href="https://github.com/virgiliojr94/book-to-skill/releases"><img src="https://img.shields.io/github/v/release/virgiliojr94/book-to-skill?style=for-the-badge&color=blueviolet" alt="Latest release"></a>
+  <em>Improved fork of <a href="https://github.com/virgiliojr94/book-to-skill">virgiliojr94/book-to-skill</a> — with thanks to the original author and contributors.</em>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Agent_Skills-Open_Standard-blueviolet?style=for-the-badge" alt="Agent Skills standard">
   <img src="https://img.shields.io/badge/PDF%20%E2%80%A2%20EPUB%20%E2%80%A2%20DOCX%20%E2%80%A2%20MD%20%E2%80%A2%20HTML%20%E2%80%A2%20RTF%20%E2%80%A2%20MOBI-supported-green?style=for-the-badge" alt="Formats supported">
   <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="MIT License">
-  <a href="https://github.com/sponsors/virgiliojr94"><img src="https://img.shields.io/github/sponsors/virgiliojr94?style=for-the-badge&color=ea4aaa&logo=githubsponsors&logoColor=white" alt="Sponsor"></a>
 </p>
 
-<p align="center">
-  <a href="https://trendshift.io/repositories/27038?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-27038" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/27038" alt="virgiliojr94%2Fbook-to-skill | Trendshift" width="250" height="55"/></a>
-  <a href="https://trendshift.io/repositories/27038?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-27038" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/27038/daily?language=Python" alt="virgiliojr94%2Fbook-to-skill | Trendshift (daily, Python)" width="250" height="55"/></a>
-</p>
+**24×–51× fewer tokens** than dumping a book into context ([how measured](docs/performance.md#the-discovery-loop-tax)).
 
-<p align="center">
-  <a href="#-why">Why</a> ·
-  <a href="#-what-it-generates">What it generates</a> ·
-  <a href="#-tables-figures--charts">Tables, figures &amp; charts</a> ·
-  <a href="#-beyond-books">Beyond books</a> ·
-  <a href="docs/how-it-works.md">How it works</a> ·
-  <a href="docs/usage.md">Usage</a> ·
-  <a href="docs/install.md">Install</a> ·
-  <a href="docs/faq.md">FAQ</a> ·
-  <a href="docs/performance.md">Performance</a> ·
-  <a href="docs/architecture.md">Architecture</a> ·
-  <a href="CHANGELOG.md">Changelog</a>
-</p>
-
-<p align="center">
-  <strong>24×–51× fewer tokens than dumping the book into context</strong> to answer one question, measured on real books (<a href="docs/performance.md#the-discovery-loop-tax">how it's measured</a>).
-</p>
-
-**How it works, in 3 steps:**
-
-1. **Point** it at a file, folder, or glob — `/book-to-skill ./my-book.pdf`
-2. **It distills** the book into a skill — frameworks, decision rules, anti-patterns, per-chapter files, **markdown tables**, and an optional **figure inventory** (charts, diagrams, screenshots). Structure, not a summary.
-3. **Your agent loads it on demand** — ask `/my-book replication` and it reads the right chapter (and figure notes when available) and answers from the real content, no hallucination.
+1. **Point** — `/book-to-skill ./my-book.pdf` (file, folder, or glob)
+2. **Distill** — frameworks, rules, anti-patterns, chapters, **markdown tables**, optional **figure inventory**
+3. **Query** — `/my-book replication` loads only the relevant chapter (and figure notes when present)
 
 ---
 
-## 🤔 Why
+## What it generates
 
-<img align="right" width="200" src="docs/assets/booklin.png" alt="Booklin — the book-to-skill mascot, a purple wizard holding a book">
+Installs a skill under your agent’s skills dir (`~/.claude/skills/`, `~/.copilot/skills/`, or `~/.agents/skills/`):
 
-You buy a great technical book. You read it once. Three months later you can't remember chapter 7 existed.
+| Output                                          | Role                                                            |
+| ----------------------------------------------- | --------------------------------------------------------------- |
+| `SKILL.md`                                      | Core models + chapter index (\~4K tokens)                       |
+| `chapters/ch01-*.md` …                          | On-demand chapters: frameworks, tables, key figures (\~1K each) |
+| `glossary.md` / `patterns.md` / `cheatsheet.md` | Terms, techniques, decision tables                              |
 
-The usual workarounds don't help:
-- 📄 "Let me just search the PDF" → you get a list of pages, not answers
-- 🧠 "I'll ask the agent about this book" → it either hallucinates or says it doesn't have the content
-- 📝 "I'll take notes as I read" → you end up with a 200-line doc you never open again
+Extraction workdir (technical mode) also writes:
 
-**book-to-skill solves this by turning the book into a structured skill your agent loads on demand.**
-
-Once installed, you just type `/your-book-slug replication` and the agent reads the right chapter and answers from the actual content. No hallucination. No digging through PDFs. The book becomes part of your workflow.
-
-Works with any host that supports the open [Agent Skills](https://github.com/agentskills/agentskills) standard — GitHub Copilot CLI, Amp, and Claude Code all read the same `SKILL.md` format.
-
----
-
-## 📦 What it generates
-
-Running `/book-to-skill your-book.pdf` (or a folder, glob, or list of files) creates a full skill in your agent's skills directory (`~/.copilot/skills/<slug>/` for Copilot CLI, `~/.agents/skills/<slug>/` for Amp or cross-agent, `~/.claude/skills/<slug>/` for Claude Code):
-
-| File | Purpose | Size |
-|------|---------|------|
-| `SKILL.md` | Core mental models + chapter index | ~4,000 tokens |
-| `chapters/ch01-*.md` … | One file per chapter (frameworks, tables, key figures), loaded on-demand | ~1,000 tokens each |
-| `glossary.md` | Every key term, alphabetically sorted with chapter refs | ~1,500 tokens |
-| `patterns.md` | All techniques, algorithms, and design patterns | ~2,000 tokens |
-| `cheatsheet.md` | Decision tables and quick-reference rules | ~1,000 tokens |
-
-**Chapter files are loaded on-demand** — they don't count against the skill budget until you ask about that topic.
-
-During extraction (before the skill is written), technical mode also produces work artifacts used by the generator:
-
-| Artifact | Purpose |
-|----------|---------|
-| `full_text.txt` | Clean text with **GFM tables** (`<!-- table:Tnn -->`) and image/caption markers |
-| `figures.jsonl` | Per-figure inventory: id, path, caption, alt, `kind_hint` (chart / diagram / screenshot / …) |
-| `assets/` | Copied figure binaries from HTML / DOCX / EPUB when available |
-| `metadata.json` | Counts + `figures_high_value` / `multimodal_recommended` flags |
+| Artifact                    | Role                                                                           |
+| --------------------------- | ------------------------------------------------------------------------------ |
+| `full_text.txt`             | Text + **GFM tables** (`<!-- table:Tnn -->`) + image/caption markers           |
+| `figures.jsonl` + `assets/` | Figure inventory (kind, caption, alt, path) and copied binaries when available |
+| `metadata.json`             | Size stats, `figures_high_value`, `multimodal_recommended`                     |
 
 ---
 
-## 🖼️ Tables, figures & charts
+## Tables, figures & charts
 
-Technical books bury half their knowledge in **grids and visuals**. book-to-skill now treats those as first-class inputs — not throwaway page noise.
-
-### Tables → structured markdown
-- Recoverable grids (HTML `<table>`, DOCX tables, Docling PDF tables, tab-separated blocks) become **GitHub-Flavored Markdown tables**.
-- Stable markers like `<!-- table:T01 -->` keep tables addressable across extraction → chapter writing → cheatsheet.
-- Decision / comparison / parameter tables land in chapter **Reference Tables** and feed `cheatsheet.md`.
-
-### Figures → inventory + optional vision distillation
-- **`--extract-figures`** (on by default in `--mode technical`) writes `figures.jsonl` and copies binaries into `assets/` when the format exposes them (HTML, DOCX, EPUB; PDF may be caption-only unless a layout exporter is available).
-- Each figure gets a **kind hint**: `chart`, `diagram`, `screenshot`, `table`, `photo`, or `unknown`. Decorative logos/icons are tagged and skipped.
-- Captions, alt text, nearby headings, and optional OCR snippets stay attached so text-only sessions still keep *some* visual context.
-
-### Charts & diagrams need eyes
-- Distilling **chart values, diagram topology, or UI steps** requires a **multimodal (vision-capable) host model** that can open the asset files.
-- Text-only sessions keep native tables + captions/alt/OCR only, **disclose the gap**, and **never invent** visual numbers.
-- Visual notes are **additive** — they must not replace author-precise prose (named protocols, thresholds, worked cases).
+- **Tables** — HTML / DOCX / Docling PDF / TSV grids → GFM with stable `<!-- table:Tnn -->` markers; feed chapter Reference Tables and `cheatsheet.md`.
+- **Figures** — `--extract-figures` (default in `--mode technical`) → `figures.jsonl` + `assets/` (HTML/DOCX/EPUB; PDF often caption-only). Kind hints: chart, diagram, screenshot, table, photo. Decorative logos/icons skipped.
+- **Charts & diagrams** — values/topology need a **multimodal** host model. Text-only keeps tables + captions/alt/OCR, discloses gaps, never invents numbers. Visual notes are **additive** to author-precise prose.
 
 ```bash
-# Technical extraction with figure inventory (default in technical mode)
-python3 scripts/extract.py ./architecture-guide.pdf --mode technical
-
-# Explicit flags
+python3 scripts/extract.py ./guide.pdf --mode technical
 python3 scripts/extract.py ./book.epub --extract-figures --vision ask
 python3 scripts/extract.py ./book.pdf --mode technical --no-extract-figures
 ```
 
 ---
 
-## 🏢 Beyond books
+## Beyond books
 
-The name says "book", but the input is any structured prose. The same extraction works on knowledge you own and re-read constantly:
-
-- **Internal documentation** — architecture decision records, runbooks, onboarding guides. Fold a whole `docs/` folder into one skill and ask it while you code.
-- **Brand & design systems** — voice guidelines, tone-of-voice docs, component principles. Turn a brand book into a skill your team queries instead of skimming a 60-page PDF.
-- **Research clusters** — a stack of papers plus your own notes, merged into a single unified skill and updated as new material lands (see [Update / fold-in](#-usage)).
-- **Specs & standards** — RFCs, API contracts, compliance docs you reference but never memorize.
-
-If you re-open a document often enough to wish you'd memorized it, it's a candidate.
+Any structured prose you reopen often: internal docs, design systems, paper clusters, RFCs/specs. Multi-source fold-in is supported ([usage](docs/usage.md)).
 
 ---
 
-
-## 🧾 The Discovery Loop Tax
-
-A PDF-reading agent doesn't just read — it *navigates*: it re-fetches the ToC, backtracks, and re-processes all of it on every turn. book-to-skill pays that structuring cost **once**, at conversion, so queries stay proportional to the answer — **24×–51× fewer tokens** than dumping the book into context, measured on real books.
-
-📊 **Full methodology, numbers, and per-book tables → [docs/performance.md](docs/performance.md#the-discovery-loop-tax)**
-
----
-
-## ⚙️ How it works
-
-Two halves: a deterministic Python **extractor** (document → clean text + metadata) and a spec-driven **generator** (your agent follows `SKILL.md` to turn that into a structured skill). On-demand chapter files keep the loaded skill small.
-
-🔧 **Full walkthrough (Steps 0–10, extraction modes, token budgets) → [docs/how-it-works.md](docs/how-it-works.md)**
-
----
-
-## 🚀 Usage
-
-`/book-to-skill <path|folder|glob> [skill-name]` — plus analyze-only, generate-from-analysis, and update/fold-in modes.
-
-▶️ **All modes and examples → [docs/usage.md](docs/usage.md)**
-
----
-
-## 📥 Install
+## Install
 
 ```bash
-# Agent skill (registers /book-to-skill) — clone into your skills folder:
-git clone https://github.com/virgiliojr94/book-to-skill.git ~/.claude/skills/book-to-skill
-# (Copilot CLI: ~/.copilot/skills/ · Amp/cross-agent: ~/.agents/skills/)
+git clone https://github.com/qydxyx/book-to-skill.git ~/.claude/skills/book-to-skill
+# Copilot CLI: ~/.copilot/skills/ · Amp / cross-agent: ~/.agents/skills/
 ```
 
-📥 **All hosts, optional extractors, and the standalone CLI → [docs/install.md](docs/install.md)**
+Hosts, optional extractors, standalone CLI → [docs/install.md](docs/install.md)
+
+### Requirements (short)
+
+```bash
+python3 scripts/extract.py --check   # what’s installed + how to install missing tools
+```
+
+| Need                                  | Tool                                                   |
+| ------------------------------------- | ------------------------------------------------------ |
+| PDF prose                             | `pdftotext` / `pypdf` / `pdfminer.six`                 |
+| PDF technical (tables, code, figures) | `docling`                                              |
+| EPUB / HTML                           | `ebooklib` + `beautifulsoup4` (stdlib fallbacks exist) |
+| DOCX / RTF                            | `python-docx` / `striprtf` (stdlib/regex fallbacks)    |
+| MOBI/AZW                              | Calibre `ebook-convert`                                |
+| Scanned PDF                           | OCR first: `ocrmypdf input.pdf output.pdf`             |
+
+TXT / Markdown / RST / AsciiDoc need no extras. The skill asks technical vs text-heavy and picks the extractor.
 
 ---
 
-## ❓ FAQ
+## How it works & docs
 
-Common questions — "why not just dump the PDF?", cost, privacy, non-book inputs, multi-file books.
+**Extractor** (Python: document → text, tables, figures, metadata) + **generator** (agent follows `SKILL.md`). Chapters stay on disk until needed.
 
-❓ **Answers → [docs/faq.md](docs/faq.md)**
-
----
-
-<details>
-<summary>🔧 <strong>Requirements</strong></summary>
-
-
-The extractor tries tools in order per format and uses the first available. If nothing is installed, it tells you which command to run. Plain text, Markdown, reStructuredText and AsciiDoc need no extra deps.
-
-> **Check your setup in one command:** `python3 scripts/extract.py --check` prints which extractors are installed for every format and the exact command to install anything missing — no file needed.
-
-**PDF — choose by book type:**
-
-| Book type | Tool | Install | Speed |
-|-----------|------|---------|-------|
-| Text-heavy (prose, few tables) | `pdftotext` (poppler) | `sudo apt install poppler-utils` | ⚡ instant |
-| Text-heavy fallback | `pypdf` | `pip3 install pypdf` | ⚡ instant |
-| Text-heavy fallback | `pdfminer.six` | `pip3 install pdfminer.six` | ⚡ instant |
-| **Technical (code, tables, formulas, figures)** | **`docling`** | `pip3 install docling` | ~1.5s/page |
-
-> Before extraction begins, the skill asks you whether the book is **technical** or **text-heavy** and picks the right tool automatically. Docling preserves markdown tables and code blocks and pairs with figure inventory; pdftotext is faster for prose-only books.
-
-> **Scanned PDFs need OCR first.** A PDF that is page images with no text layer — a photographed or scanned book — has nothing for these tools to extract. The extractor checks the first pages and stops immediately with an explanation, rather than working through the whole book to produce an empty skill. Run OCR yourself, then convert the result:
->
-> ```bash
-> ocrmypdf input.pdf output.pdf
-> ```
->
-> **Tables, figures & charts (enhanced):** see [Tables, figures & charts](#-tables-figures--charts). Short version — technical mode inventories figures (`figures.jsonl`, `assets/`) and normalizes grids to GFM markdown; chart/diagram *understanding* still needs a multimodal host model; visual notes stay additive to author-precise prose.
-
-**EPUB:**
-
-| Tool | Install | Quality |
-|------|---------|---------|
-| `ebooklib` + `beautifulsoup4` | `pip3 install ebooklib beautifulsoup4` | ⭐⭐⭐ Best |
-| stdlib `zipfile` | built-in — no install needed | ⭐⭐ Always available |
-
-**Other formats:**
-
-| Format | Tool | Install |
-|--------|------|---------|
-| DOCX | `python-docx` (fallback: stdlib ZIP/XML) | `pip3 install python-docx` |
-| HTML | `beautifulsoup4` (fallback: stdlib `html.parser`) | `pip3 install beautifulsoup4` |
-| RTF | `striprtf` (fallback: regex) | `pip3 install striprtf` |
-| MOBI / AZW / AZW3 | Calibre `ebook-convert` (external app, not pip) | https://calibre-ebook.com/download |
-| TXT / Markdown / reStructuredText / AsciiDoc | built-in | — |
-
----
-
-
-</details>
-
-<details>
-<summary>📁 <strong>Repository structure</strong></summary>
-
+| Doc                                  |                                      |
+| ------------------------------------ | ------------------------------------ |
+| [How it works](docs/how-it-works.md) | Pipeline, modes, budgets             |
+| [Usage](docs/usage.md)               | Full / analyze / fold-in             |
+| [FAQ](docs/faq.md)                   | vs context dump, RAG, scans, visuals |
+| [Performance](docs/performance.md)   | Discovery-loop tax                   |
+| [Architecture](docs/architecture.md) | Component map                        |
+| [Changelog](CHANGELOG.md)            | Releases                             |
 
 ```
 book-to-skill/
-├── SKILL.md              # Skill definition + step-by-step instructions (the generator spec)
-├── scripts/
-│   └── extract.py        # Thin entrypoint wrapper
-├── book_to_skill/        # Modular extraction package
-│   ├── config.py         # Extensions, paths, dependency constants
-│   ├── tables.py         # GFM table normalization + table:Tnn markers
-│   ├── figures.py        # Figure inventory (assets/, figures.jsonl, kind hints)
-│   ├── utils.py          # CLI parsing, multi-source resolution, chapter detection, runner
-│   └── parsers/          # Format-specific parsers (pdf, epub, docx, html, rtf, calibre, text)
-├── tools/
-│   ├── discovery_tax.py  # measures token cost vs context-dump / discovery loop
-│   └── validate_skill.py # checks a generated SKILL.md against host rules (--lens claude|copilot|amp)
-├── tests/                # pytest suite (extraction, tables/figures, detection, discovery tax)
-├── docs/
-│   ├── performance.md    # measured benchmarks, discovery tax, cost
-│   └── architecture.md   # pipeline + component map
-├── CHANGELOG.md          # release history (semver)
-├── CONTRIBUTING.md       # dev setup, PR conventions, release process
-├── SECURITY.md           # vulnerability reporting
-└── README.md             # This file
+├── SKILL.md                 # generator spec
+├── scripts/extract.py
+├── book_to_skill/           # extractor (tables.py, figures.py, parsers/)
+├── tools/                   # discovery_tax, validate_skill
+├── tests/ · docs/
 ```
 
 ---
 
+## Credits
 
-</details>
+This project is based on **[virgiliojr94/book-to-skill](https://github.com/virgiliojr94/book-to-skill)** by [virgiliojr94](https://github.com/virgiliojr94) and contributors. Thank you for the original design, extractor, and Agent Skills workflow — this fork builds on that foundation with stronger **tables, figures, and chart** handling (GFM tables, figure inventory, multimodal-aware distillation).
 
----
-## ⚖️ Copyright & fair use
+Upstream: https://github.com/virgiliojr94/book-to-skill
 
-book-to-skill ships **no book content** — not a single page. It's a converter you point at files you already own.
+## Copyright
 
-- **Processing is local.** Extraction and analysis run on your machine. Your files are never uploaded by this tool. (If your agent's model runs in the cloud, the text you feed it follows that provider's normal data terms — same as any prompt.)
-- **You use your own copy.** Bring a book you bought, docs your company owns, or papers you have the right to read.
-- **The output is your notes.** A generated skill is a structured, synthesized derivative — framework names, definitions, takeaways — not a reproduction of the text. The skill explicitly never copies raw passages (see Quality Rule #7). Treat it like handwritten study notes: yours, for personal use.
-- **Don't redistribute.** Publishing or sharing a generated skill of a copyrighted work can infringe the rights holder. Keep skills of third-party books private. Internal docs, your own writing, and openly-licensed material are fine to share within the bounds of their license.
-
-When in doubt, follow the license or terms of the source document. This project is a tool; how you use it is on you.
-
----
-
-## 💖 Sponsors
-
-<img align="right" width="150" src="docs/assets/booklin-celebrating.png" alt="Booklin celebrating">
-
-book-to-skill is free and MIT-licensed, maintained on personal time. If it saves you tokens or study hours, consider sponsoring its upkeep: PR reviews, multilingual fixes, releases, and docs.
-
-**[Become a sponsor → github.com/sponsors/virgiliojr94](https://github.com/sponsors/virgiliojr94)**
-
-Every sponsor is listed in [BACKERS.md](BACKERS.md). Thank you for keeping open, privacy-first tooling alive. ✨
+Ships **no book content**. Local extraction; you supply files you may use. Output is structured notes, not a verbatim copy — don’t redistribute skills of third-party copyrighted books. MIT covers this repo’s code and skill definition only.
 
 ## License
 
-MIT — applies to the converter (code + skill definition) in this repository, **not** to any book or document you process with it.
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=virgiliojr94%2Fbook-to-skill&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=virgiliojr94/book-to-skill&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=virgiliojr94/book-to-skill&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=virgiliojr94/book-to-skill&type=date&legend=top-left" />
- </picture>
-</a>
+MIT (same as upstream)
