@@ -15,6 +15,8 @@ from book_to_skill.config import (
     OUTPUT_DIR,
     OUTPUT_TEXT,
     OUTPUT_META,
+    OUTPUT_ASSETS,
+    OUTPUT_FIGURES,
     WORDS_PER_TOKEN,
     CJK_CHARS_PER_TOKEN,
     SUPPORTED_EXTENSIONS,
@@ -22,6 +24,15 @@ from book_to_skill.config import (
     HTML_EXTENSIONS,
     CALIBRE_EBOOK_EXTENSIONS,
     supported_formats_message,
+)
+from book_to_skill.figures import (
+    FigureRecord,
+    ensure_assets_dir,
+    extract_figures_from_docx,
+    extract_figures_from_epub,
+    extract_figures_from_html,
+    summarize_figures_for_metadata,
+    write_figures_jsonl,
 )
 from book_to_skill.dependencies import (
     normalize_install_mode,
@@ -294,6 +305,17 @@ def _match_chapter_number(line: str) -> int | None:
     """Return the chapter number if the line is a genuine chapter heading,
     with no Markdown/AsciiDoc heading prefix (the caller strips it first)."""
     s = line.strip()
+    # GFM table ToC rows: "| Chapter 1 | Title | 1 |"
+    if s.startswith("|") and s.endswith("|"):
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        cells = [c for c in cells if c and not set(c) <= {"-", ":", " "}]
+        if cells:
+            first = cells[0]
+            m0 = _EXPLICIT_CHAPTER.match(first)
+            if len(cells) > 1 and m0 and not _HEADING_TAIL.match(m0.group("rest") or ""):
+                s = f"{first} {cells[1]}"
+            else:
+                s = first
     if len(s) > 80:
         return None
     m = _EXPLICIT_CHAPTER.match(s)
@@ -376,40 +398,64 @@ def detect_structure(text: str) -> dict:
     }
 
 
-def parse_arguments(argv: list[str]) -> tuple[list[str], str, str]:
-    """Parse argv into (input_paths, extraction_mode, install_mode)."""
+def parse_arguments(argv: list[str]) -> tuple[list[str], str, str, dict]:
+    """Parse argv into (input_paths, extraction_mode, install_mode, options)."""
     input_paths = []
     extraction_mode = "text"
-    
+    options = {"extract_figures": False, "vision": "ask", "ocr": "auto"}
+
     args = argv[1:]
     i = 0
     while i < len(args):
         arg = args[i]
         if arg == "--mode":
             if i + 1 < len(args):
-                extraction_mode = args[i+1].lower()
+                extraction_mode = args[i + 1].lower()
                 i += 2
             else:
                 i += 1
         elif arg == "--install-missing":
-            if i + 1 < len(args) and not args[i+1].startswith("--"):
+            if i + 1 < len(args) and not args[i + 1].startswith("--"):
                 i += 2
             else:
                 i += 1
         elif arg == "--no-install-missing":
             i += 1
+        elif arg == "--extract-figures":
+            options["extract_figures"] = True
+            i += 1
+        elif arg == "--no-extract-figures":
+            options["extract_figures"] = False
+            i += 1
+        elif arg == "--vision":
+            if i + 1 < len(args) and not args[i + 1].startswith("--"):
+                val = args[i + 1].lower()
+                options["vision"] = val if val in {"ask", "yes", "no"} else "ask"
+                i += 2
+            else:
+                options["vision"] = "yes"
+                i += 1
+        elif arg == "--ocr":
+            if i + 1 < len(args) and not args[i + 1].startswith("--"):
+                val = args[i + 1].lower()
+                options["ocr"] = val if val in {"auto", "yes", "no"} else "auto"
+                i += 2
+            else:
+                i += 1
         elif arg.startswith("-"):
             print(f"WARNING: Unknown flag '{arg}' — ignoring it.", file=sys.stderr)
             i += 1
         else:
             input_paths.append(arg)
             i += 1
-            
+
     install_mode = normalize_install_mode(argv)
     if extraction_mode not in ("technical", "text"):
         extraction_mode = "text"
-        
-    return input_paths, extraction_mode, install_mode
+    # technical books often have tables/diagrams; inventory is cheap vs vision
+    if extraction_mode == "technical" and "--no-extract-figures" not in args:
+        options["extract_figures"] = True
+    return input_paths, extraction_mode, install_mode, options
 
 
 def resolve_input_files(paths: list[str]) -> list[Path]:
@@ -469,8 +515,11 @@ def resolve_input_files(paths: list[str]) -> list[Path]:
     return unique_paths
 
 
-def extract_single_file(input_path: Path, extraction_mode: str, install_mode: str) -> dict:
+def extract_single_file(input_path: Path, extraction_mode: str, install_mode: str, options: dict | None = None) -> dict:
     """Extract text and metadata from a single file path."""
+    options = options or {}
+    extract_figures = bool(options.get("extract_figures"))
+    figure_records: list[FigureRecord] = []
     input_str = str(input_path)
     
     if not input_path.exists():
@@ -645,6 +694,40 @@ def extract_single_file(input_path: Path, extraction_mode: str, install_mode: st
         pages = 0
         pages_label = "sections"
 
+    if extract_figures:
+        try:
+            assets = ensure_assets_dir()
+            stem = (input_path.stem.replace(" ", "_")[:40] or "src")
+            if ext == ".epub":
+                figure_records, _ = extract_figures_from_epub(input_str, assets_dir=assets, id_prefix=stem)
+            elif ext == ".docx":
+                figure_records, _ = extract_figures_from_docx(input_str, assets_dir=assets, id_prefix=stem)
+            elif ext in HTML_EXTENSIONS:
+                raw_html = read_text_file(input_str) or ""
+                figure_records, _ = extract_figures_from_html(
+                    raw_html, source=input_str, assets_dir=assets, id_prefix=stem, base_dir=input_path.parent,
+                )
+            elif ext == ".pdf":
+                import re as _re
+                for m in _re.finditer(
+                    r"(?im)^\s*((?:figure|fig\.?|exhibit)\s*[-.:]?\s*\d+\S*)\s*(.*)$",
+                    text or "",
+                ):
+                    caption = (m.group(1) + " " + (m.group(2) or "")).strip()
+                    figure_records.append(
+                        FigureRecord(
+                            id=f"{stem}-{len(figure_records)+1:03d}",
+                            source=input_str,
+                            caption=caption,
+                            kind_hint="diagram",
+                        )
+                    )
+        except Exception as exc:
+            print(
+                f"  [warn] figure extraction failed for {input_path.name}: {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )
+
     text, removed_invisible = sanitize_extracted_text(text)
     if removed_invisible:
         print(
@@ -675,6 +758,8 @@ def extract_single_file(input_path: Path, extraction_mode: str, install_mode: st
         "words": len(text.split()),
         "estimated_tokens": tokens,
         "text": text,
+        "figures": figure_records,
+        "figures_count": len(figure_records),
         **structure,
     }
 
@@ -697,10 +782,21 @@ def print_usage() -> None:
         file=sys.stderr,
     )
     print(
+        "       [--extract-figures|--no-extract-figures] "
+        "[--vision ask|yes|no] [--ocr auto|yes|no]",
+        file=sys.stderr,
+    )
+    print(
         "       book-to-skill --check    # report which extractors are installed",
         file=sys.stderr,
     )
     print(f"Supported formats: {supported_formats_message()}", file=sys.stderr)
+    print(
+        "Visual: --extract-figures writes assets/ + figures.jsonl. "
+        "Chart/diagram understanding still needs a multimodal host model; "
+        "text-only sessions miss figure-derived knowledge.",
+        file=sys.stderr,
+    )
 
 
 def main():
@@ -717,7 +813,7 @@ def main():
         print_usage()
         sys.exit(1)
         
-    raw_input_paths, extraction_mode, install_mode = parse_arguments(sys.argv)
+    raw_input_paths, extraction_mode, install_mode, options = parse_arguments(sys.argv)
     
     if not raw_input_paths:
         print("ERROR: No input document, folder, or glob pattern specified.", file=sys.stderr)
@@ -737,7 +833,7 @@ def main():
     
     for file_path in input_files:
         try:
-            res = extract_single_file(file_path, extraction_mode, install_mode)
+            res = extract_single_file(file_path, extraction_mode, install_mode, options)
         except ExtractionError as exc:
             print(f"WARNING: Skipping {file_path.name}: {exc}", file=sys.stderr)
             errors.append((file_path, str(exc)))
@@ -756,7 +852,27 @@ def main():
         
     # Combine texts
     consolidated_text = "".join(combined_texts).strip()
-    
+
+    all_figures: list[FigureRecord] = []
+    for src in extracted_sources:
+        all_figures.extend(src.get("figures") or [])
+    figure_meta = {}
+    if options.get("extract_figures") or all_figures:
+        ensure_assets_dir()
+        write_figures_jsonl(all_figures)
+        figure_meta = summarize_figures_for_metadata(all_figures)
+        figure_meta["vision"] = options.get("vision", "ask")
+        figure_meta["ocr"] = options.get("ocr", "auto")
+        if figure_meta.get("figures_high_value", 0) > 0:
+            print(
+                "\n   VISUAL: "
+                f"{figure_meta['figures_total']} figure(s) inventoried "
+                f"({figure_meta['figures_high_value']} high-value). "
+                "Prefer a multimodal model to distill charts/diagrams. "
+                "Text-only models will miss most figure-derived knowledge.",
+                file=sys.stderr,
+            )
+
     # Write combined text
     OUTPUT_TEXT.write_text(consolidated_text, encoding="utf-8")
     
@@ -810,11 +926,18 @@ def main():
                 "words": src["words"],
                 "estimated_tokens": src["estimated_tokens"],
                 "chapters_detected": src["chapters_detected"],
-                "has_toc": src["has_toc"]
+                "has_toc": src["has_toc"],
+                "figures_count": src.get("figures_count", 0),
             }
             for src in extracted_sources
         ],
         **consolidated_structure,
+        **figure_meta,
+        "options": {
+            "extract_figures": bool(options.get("extract_figures")),
+            "vision": options.get("vision", "ask"),
+            "ocr": options.get("ocr", "auto"),
+        },
     }
     
     # encoding="utf-8" is required, not cosmetic: the payload is dumped with
@@ -842,6 +965,9 @@ def main():
         )
     print(f"\n   Text -> {OUTPUT_TEXT}")
     print(f"   Meta -> {OUTPUT_META}")
+    if figure_meta:
+        print(f"   Figs -> {OUTPUT_FIGURES} ({figure_meta.get('figures_total', 0)} records)")
+        print(f"   Assets -> {OUTPUT_ASSETS}")
     if errors:
         print(f"\n   WARNING: {len(errors)} source(s) skipped due to errors:")
         for path, err in errors:

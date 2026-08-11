@@ -10,6 +10,8 @@ OUTPUT_DIR = Path(
 )
 OUTPUT_TEXT = OUTPUT_DIR / "full_text.txt"
 OUTPUT_META = OUTPUT_DIR / "metadata.json"
+OUTPUT_ASSETS = OUTPUT_DIR / "assets"
+OUTPUT_FIGURES = OUTPUT_DIR / "figures.jsonl"
 
 WORDS_PER_TOKEN = 0.75  # approximate (Latin / whitespace-delimited text)
 # CJK scripts carry little or no whitespace, so word-splitting under-counts them

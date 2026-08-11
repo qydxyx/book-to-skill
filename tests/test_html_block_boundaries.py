@@ -78,9 +78,11 @@ class TestBlockBoundaryChapterDetection:
         assert _chapters(getattr(self, layout)) == 3
 
     def test_table_row_stays_on_one_line(self):
-        """Cells are tab-joined, matching the stdlib DOCX fallback's rows."""
-        lines = [ln for ln in _text(self.TABLE_TOC).splitlines() if ln.strip()]
-        assert lines[1] == "Chapter 1\tReliable Applications\t1"
+        """Table rows become GFM markdown; chapter cells remain detectable."""
+        text = _text(self.TABLE_TOC)
+        assert "<!-- table:T01 -->" in text
+        assert "| Chapter 1 | Reliable Applications | 1 |" in text
+        assert detect_structure(text)["chapters_detected"] == 3
 
     def test_heading_text_not_glued_to_body_text(self):
         assert "Chapter 1Reliable" not in _text(self.HEADING_THEN_BARE_TEXT)

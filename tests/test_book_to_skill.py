@@ -544,27 +544,27 @@ class TestParseArguments:
     """Basic tests for argument parsing."""
 
     def test_basic_parsing(self):
-        paths, mode, _ = parse_arguments(
+        paths, mode, _, _opts = parse_arguments(
             ["extract.py", "book.pdf", "--mode", "text", "--install-missing", "no"]
         )
         assert paths == ["book.pdf"]
         assert mode == "text"
 
     def test_multiple_inputs(self):
-        paths, mode, _ = parse_arguments(
+        paths, mode, _, _opts = parse_arguments(
             ["extract.py", "a.pdf", "b.epub", "c.txt"]
         )
         assert paths == ["a.pdf", "b.epub", "c.txt"]
         assert mode == "text"  # default
 
     def test_technical_mode(self):
-        paths, mode, _ = parse_arguments(
+        paths, mode, _, _opts = parse_arguments(
             ["extract.py", "a.pdf", "--mode", "technical"]
         )
         assert mode == "technical"
 
     def test_invalid_mode_defaults_to_text(self):
-        _, mode, _ = parse_arguments(
+        _, mode, _, _opts = parse_arguments(
             ["extract.py", "a.pdf", "--mode", "invalid"]
         )
         assert mode == "text"
@@ -1293,15 +1293,16 @@ class TestDocxTableReconstruction:
     def _cell(self, text):
         return f"<w:tc><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:tc>"
 
-    def test_table_rows_are_tab_joined(self, tmp_path):
+    def test_table_rows_are_gfm(self, tmp_path):
         body = (
             self._para("Intro")
             + "<w:tbl><w:tr>" + self._cell("Name") + self._cell("Value") + "</w:tr>"
             + "<w:tr>" + self._cell("foo") + self._cell("1") + "</w:tr></w:tbl>"
         )
         out = extract_docx_with_zipfile(self._make_docx(tmp_path, body))
-        assert "Name\tValue" in out
-        assert "foo\t1" in out
+        assert "<!-- table:T01 -->" in out
+        assert "| Name | Value |" in out
+        assert "| foo | 1 |" in out
 
     def test_document_order_preserved(self, tmp_path):
         body = (
@@ -1317,14 +1318,14 @@ class TestDocxTableReconstruction:
         out = extract_docx_with_zipfile(self._make_docx(tmp_path, body))
         assert out == "Just a paragraph\nAnd another"
 
-    def test_empty_cell_still_tab_joined(self, tmp_path):
+    def test_empty_cell_still_in_gfm_row(self, tmp_path):
         body = (
             "<w:tbl><w:tr>" + self._cell("A")
             + "<w:tc><w:p></w:p></w:tc></w:tr></w:tbl>"
         )
         out = extract_docx_with_zipfile(self._make_docx(tmp_path, body))
-        # "\t".join(["A", ""]) -> "A\t"; the empty cell becomes an empty field.
-        assert out == "A\t"
+        assert "<!-- table:T01 -->" in out
+        assert "| A |" in out
 
     def test_sdt_wrapped_content_is_preserved(self, tmp_path):
         # Word wraps TOC/cover-page/form content in <w:sdt> content controls,
@@ -1693,7 +1694,7 @@ class TestParseArgumentsUnknownFlags:
 
     def test_unknown_flag_warns(self):
         """An unknown flag like --mod should print a warning to stderr."""
-        paths, mode, _ = parse_arguments(
+        paths, mode, _, _opts = parse_arguments(
             ["extract.py", "book.pdf", "--mod", "technical"]
         )
         assert mode == "text"  # default, since the flag is unknown

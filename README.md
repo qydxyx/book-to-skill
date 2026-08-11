@@ -5,7 +5,7 @@
 <h1 align="center">book-to-skill</h1>
 
 <p align="center">
-  <strong>Turn any technical book, document folder, or collection of sources into a unified agent skill — ready to study, reference, and use while you work in GitHub Copilot CLI, Amp, or Claude Code.</strong>
+  <strong>Turn any technical book, document folder, or collection of sources into a unified agent skill — including tables, figures, charts, and diagrams — ready to study, reference, and use while you work in GitHub Copilot CLI, Amp, or Claude Code.</strong>
 </p>
 
 <p align="center">
@@ -24,6 +24,7 @@
 <p align="center">
   <a href="#-why">Why</a> ·
   <a href="#-what-it-generates">What it generates</a> ·
+  <a href="#-tables-figures--charts">Tables, figures &amp; charts</a> ·
   <a href="#-beyond-books">Beyond books</a> ·
   <a href="docs/how-it-works.md">How it works</a> ·
   <a href="docs/usage.md">Usage</a> ·
@@ -41,8 +42,8 @@
 **How it works, in 3 steps:**
 
 1. **Point** it at a file, folder, or glob — `/book-to-skill ./my-book.pdf`
-2. **It distills** the book into a skill — frameworks, decision rules, anti-patterns, and per-chapter files. Structure, not a summary.
-3. **Your agent loads it on demand** — ask `/my-book replication` and it reads the right chapter and answers from the real content, no hallucination.
+2. **It distills** the book into a skill — frameworks, decision rules, anti-patterns, per-chapter files, **markdown tables**, and an optional **figure inventory** (charts, diagrams, screenshots). Structure, not a summary.
+3. **Your agent loads it on demand** — ask `/my-book replication` and it reads the right chapter (and figure notes when available) and answers from the real content, no hallucination.
 
 ---
 
@@ -72,12 +73,51 @@ Running `/book-to-skill your-book.pdf` (or a folder, glob, or list of files) cre
 | File | Purpose | Size |
 |------|---------|------|
 | `SKILL.md` | Core mental models + chapter index | ~4,000 tokens |
-| `chapters/ch01-*.md` … | One file per chapter, loaded on-demand | ~1,000 tokens each |
+| `chapters/ch01-*.md` … | One file per chapter (frameworks, tables, key figures), loaded on-demand | ~1,000 tokens each |
 | `glossary.md` | Every key term, alphabetically sorted with chapter refs | ~1,500 tokens |
 | `patterns.md` | All techniques, algorithms, and design patterns | ~2,000 tokens |
 | `cheatsheet.md` | Decision tables and quick-reference rules | ~1,000 tokens |
 
 **Chapter files are loaded on-demand** — they don't count against the skill budget until you ask about that topic.
+
+During extraction (before the skill is written), technical mode also produces work artifacts used by the generator:
+
+| Artifact | Purpose |
+|----------|---------|
+| `full_text.txt` | Clean text with **GFM tables** (`<!-- table:Tnn -->`) and image/caption markers |
+| `figures.jsonl` | Per-figure inventory: id, path, caption, alt, `kind_hint` (chart / diagram / screenshot / …) |
+| `assets/` | Copied figure binaries from HTML / DOCX / EPUB when available |
+| `metadata.json` | Counts + `figures_high_value` / `multimodal_recommended` flags |
+
+---
+
+## 🖼️ Tables, figures & charts
+
+Technical books bury half their knowledge in **grids and visuals**. book-to-skill now treats those as first-class inputs — not throwaway page noise.
+
+### Tables → structured markdown
+- Recoverable grids (HTML `<table>`, DOCX tables, Docling PDF tables, tab-separated blocks) become **GitHub-Flavored Markdown tables**.
+- Stable markers like `<!-- table:T01 -->` keep tables addressable across extraction → chapter writing → cheatsheet.
+- Decision / comparison / parameter tables land in chapter **Reference Tables** and feed `cheatsheet.md`.
+
+### Figures → inventory + optional vision distillation
+- **`--extract-figures`** (on by default in `--mode technical`) writes `figures.jsonl` and copies binaries into `assets/` when the format exposes them (HTML, DOCX, EPUB; PDF may be caption-only unless a layout exporter is available).
+- Each figure gets a **kind hint**: `chart`, `diagram`, `screenshot`, `table`, `photo`, or `unknown`. Decorative logos/icons are tagged and skipped.
+- Captions, alt text, nearby headings, and optional OCR snippets stay attached so text-only sessions still keep *some* visual context.
+
+### Charts & diagrams need eyes
+- Distilling **chart values, diagram topology, or UI steps** requires a **multimodal (vision-capable) host model** that can open the asset files.
+- Text-only sessions keep native tables + captions/alt/OCR only, **disclose the gap**, and **never invent** visual numbers.
+- Visual notes are **additive** — they must not replace author-precise prose (named protocols, thresholds, worked cases).
+
+```bash
+# Technical extraction with figure inventory (default in technical mode)
+python3 scripts/extract.py ./architecture-guide.pdf --mode technical
+
+# Explicit flags
+python3 scripts/extract.py ./book.epub --extract-figures --vision ask
+python3 scripts/extract.py ./book.pdf --mode technical --no-extract-figures
+```
 
 ---
 
@@ -154,15 +194,17 @@ The extractor tries tools in order per format and uses the first available. If n
 | Text-heavy (prose, few tables) | `pdftotext` (poppler) | `sudo apt install poppler-utils` | ⚡ instant |
 | Text-heavy fallback | `pypdf` | `pip3 install pypdf` | ⚡ instant |
 | Text-heavy fallback | `pdfminer.six` | `pip3 install pdfminer.six` | ⚡ instant |
-| **Technical (code, tables, formulas)** | **`docling`** | `pip3 install docling` | ~1.5s/page |
+| **Technical (code, tables, formulas, figures)** | **`docling`** | `pip3 install docling` | ~1.5s/page |
 
-> Before extraction begins, the skill asks you whether the book is **technical** or **text-heavy** and picks the right tool automatically. Docling preserves markdown tables and code blocks; pdftotext is faster for prose-only books.
+> Before extraction begins, the skill asks you whether the book is **technical** or **text-heavy** and picks the right tool automatically. Docling preserves markdown tables and code blocks and pairs with figure inventory; pdftotext is faster for prose-only books.
 
 > **Scanned PDFs need OCR first.** A PDF that is page images with no text layer — a photographed or scanned book — has nothing for these tools to extract. The extractor checks the first pages and stops immediately with an explanation, rather than working through the whole book to produce an empty skill. Run OCR yourself, then convert the result:
 >
 > ```bash
 > ocrmypdf input.pdf output.pdf
 > ```
+>
+> **Tables, figures & charts (enhanced):** see [Tables, figures & charts](#-tables-figures--charts). Short version — technical mode inventories figures (`figures.jsonl`, `assets/`) and normalizes grids to GFM markdown; chart/diagram *understanding* still needs a multimodal host model; visual notes stay additive to author-precise prose.
 
 **EPUB:**
 
@@ -194,17 +236,17 @@ The extractor tries tools in order per format and uses the first available. If n
 book-to-skill/
 ├── SKILL.md              # Skill definition + step-by-step instructions (the generator spec)
 ├── scripts/
-│   ├── extract.py        # Thin entrypoint wrapper
-│   └── extractor/        # Modular extraction package
-│       ├── config.py     # Extensions, paths, dependency constants
-│       ├── dependencies.py  # optional-dep probing + --check
-│       ├── exceptions.py # ExtractionError (per-source failures, batch-safe)
-│       ├── utils.py      # CLI parsing, multi-source resolution, chapter detection, runner
-│       └── parsers/      # Format-specific parsers (pdf, epub, docx, html, rtf, calibre, text)
+│   └── extract.py        # Thin entrypoint wrapper
+├── book_to_skill/        # Modular extraction package
+│   ├── config.py         # Extensions, paths, dependency constants
+│   ├── tables.py         # GFM table normalization + table:Tnn markers
+│   ├── figures.py        # Figure inventory (assets/, figures.jsonl, kind hints)
+│   ├── utils.py          # CLI parsing, multi-source resolution, chapter detection, runner
+│   └── parsers/          # Format-specific parsers (pdf, epub, docx, html, rtf, calibre, text)
 ├── tools/
 │   ├── discovery_tax.py  # measures token cost vs context-dump / discovery loop
 │   └── validate_skill.py # checks a generated SKILL.md against host rules (--lens claude|copilot|amp)
-├── tests/                # pytest suite (extraction, detection, discovery tax)
+├── tests/                # pytest suite (extraction, tables/figures, detection, discovery tax)
 ├── docs/
 │   ├── performance.md    # measured benchmarks, discovery tax, cost
 │   └── architecture.md   # pipeline + component map

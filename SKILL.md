@@ -117,10 +117,20 @@ Store the answer as `BOOK_TYPE`:
 - Option 3 → `BOOK_TYPE=text`
 
 **If `BOOK_TYPE=technical`**, inform the user before proceeding:
-> "📐 Technical mode selected — using Docling for structure-aware extraction (tables, code blocks, formulas preserved as markdown). This takes ~1.5s per page, so expect a few minutes for longer sources. Starting now…"
+> "📐 Technical mode selected — using Docling for structure-aware extraction (tables, code blocks, formulas preserved as markdown). Figure inventory is enabled (`assets/` + `figures.jsonl`). This takes ~1.5s per page, so expect a few minutes for longer sources. Starting now…"
 
 **If `BOOK_TYPE=text`**, inform:
-> "📄 Text mode selected — using the fastest suitable extractor for each file type. Plain text/Markdown/HTML are usually ready in seconds; PDFs use pdftotext when available."
+> "📄 Text mode selected — using the fastest suitable extractor for each file type. Plain text/Markdown/HTML are usually ready in seconds; PDFs use pdftotext when available. Figure inventory is off unless you pass `--extract-figures`."
+
+### Multimodal recommendation (when figures may matter)
+
+If `BOOK_TYPE=technical` or metadata later shows `figures_high_value > 0`, tell the user:
+
+> "This source may include charts, diagrams, screenshots, or table-images. Prefer a **multimodal (vision-capable) model** so figure files can be opened and distilled. A **text-only model cannot see images**; charts/diagrams/screenshots will be missing or incomplete (captions/alt/OCR + native text tables only)."
+
+Offer: switch to multimodal · continue text-only with known gaps · analyze-only.
+Never invent chart numbers, diagram topology, or UI steps without vision.
+**Do not** let visual work reduce prose precision: keep author names, thresholds, cases, and protocols from the text.
 
 ---
 
@@ -156,7 +166,11 @@ if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
   PYTHON_BIN="python"
 fi
 
-"$PYTHON_BIN" "$SCRIPT_PATH" $INPUT_PATHS --mode <BOOK_TYPE> --install-missing ask
+FIGURE_FLAGS=""
+if [ "$BOOK_TYPE" = "technical" ]; then
+  FIGURE_FLAGS="--extract-figures --vision ask"
+fi
+"$PYTHON_BIN" "$SCRIPT_PATH" $INPUT_PATHS --mode <BOOK_TYPE> $FIGURE_FLAGS --install-missing ask
 ```
 
 Before extraction, the script checks optional Python packages needed for the detected format. If a better extractor is missing, it prompts the user with the available fallback. Non-interactive sessions default to fallback unless install mode is explicitly `yes`.
@@ -164,10 +178,12 @@ Before extraction, the script checks optional Python packages needed for the det
 **Tip — preflight the environment:** run `"$PYTHON_BIN" "$SCRIPT_PATH" --check` to print a per-format report of which extractors are installed and the exact command to install whatever is missing, without processing any file. Useful when a user reports a setup or quality problem.
 
 This creates:
-- `<tempdir>/book_skill_work/full_text.txt` — combined extracted text of all sources with clear visually demarcated boundaries.
-- `<tempdir>/book_skill_work/metadata.json` — overall combined size, words, pages, token counts, and a detailed list of individual processed `sources`.
+- `<tempdir>/book_skill_work/full_text.txt` — combined extracted text with source boundaries. Recoverable grids become GFM tables with `<!-- table:Tnn -->` markers; images may appear as `[Image: …]` / `[Caption: …]` when alt/caption exists.
+- `<tempdir>/book_skill_work/metadata.json` — size/words/tokens/sources, and when inventoried: `figures_total`, `figures_high_value`, `multimodal_recommended`, `options.vision`.
+- `<tempdir>/book_skill_work/figures.jsonl` — optional per-figure records (id, path, caption, alt, kind_hint).
+- `<tempdir>/book_skill_work/assets/` — optional copied figure binaries (HTML/DOCX/EPUB). PDF may be caption-only unless a layout exporter is available.
 
-Read `<tempdir>/book_skill_work/metadata.json` to inspect the results.
+Read `metadata.json` (and `figures.jsonl` when present).
 
 ---
 
@@ -191,11 +207,19 @@ Read `<tempdir>/book_skill_work/metadata.json` and present the user with an esti
 
    ⏱  Estimated time: ~<N> minutes
 
+🖼️  Figures inventoried: <figures_total> (high-value: <figures_high_value>)
+   Vision: <ask|yes|no> | Multimodal recommended: <yes|no>
+   Model note: multimodal for charts/diagrams; text-only — visual loss expected
+
 📁 Files to be generated/updated:
    SKILL.md + chapter files + glossary + patterns + cheatsheet
 
 ➡  Proceed with Full Conversion / Update? (or type "analyze only" to preview first)
 ```
+
+If `figures_high_value > 0` and the session is text-only / `--vision no`, disclose:
+
+> "**Text-only session:** chart/image/diagram understanding unavailable. Only native text tables plus captions/alt/OCR text will be used. Figure-derived facts may be incomplete or absent."
 
 **How to estimate:**
 - Input tokens ≈ `estimated_tokens` from metadata × 1.3 (prompts overhead per chapter pass)
@@ -235,6 +259,22 @@ Use this approach for Step 3 (structure analysis), Step 7 (per-chapter summaries
 Why this matters: a 200-page book is ~75k tokens. Re-reading it once per chapter (28 passes) costs ~2M input tokens; using grep + sed to pull only relevant slices keeps generation cost proportional to the output, not the source.
 
 ---
+
+## Step 2.7 — Figure triage & vision distillation (optional, additive)
+
+Skip when `figures_total` is 0 or inventory disabled.
+
+This step **adds** figure-derived facts. It must **not** replace close reading of prose, and must **not** cause loss of author numbers, named protocols, or worked cases.
+
+1. **Triage** `figures.jsonl`: prefer `chart|diagram|screenshot|table`; skip `decorative`.
+2. **Vision** (only if host can read images and vision not declined): top ~20 high-value figures.
+   - chart → axes/series/notable values/takeaway
+   - diagram → nodes/edges/layers
+   - screenshot → labeled steps
+   - table-as-image → markdown table
+   - Never invent values. Low confidence → skip or mark uncertain.
+3. **Text-only**: captions/alt only; record skipped ids for the final report.
+4. Keep compact `figure_notes` keyed by fig id for Steps 7–8.
 
 ## Step 3 — Analyze book structure
 
@@ -359,6 +399,7 @@ For EACH chapter/major section identified in Step 3:
 Read the corresponding section of the extracted `full_text.txt` (use character offsets or grep for chapter headings).
 
 Create `$SKILLS_HOME/<skill_name>/chapters/ch<NN>-<slug>.md` using the structure below.
+Choose `<slug>` in the **source language** when the book is not English (e.g. Chinese titles → Chinese slugs). Do not force English-only slugs.
 
 **Adapt emphasis based on `BOOK_TYPE`:**
 - `technical` → prioritize "Code Examples", "Reference Tables", and "Commands & APIs" sections; preserve exact syntax
@@ -392,8 +433,13 @@ Create `$SKILLS_HOME/<skill_name>/chapters/ch<NN>-<slug>.md` using the structure
 ```
 - **What it demonstrates**: <one line>
 
-## Reference Tables *(technical books only — omit if BOOK_TYPE=text)*
-<!-- Reproduce any comparison matrix, parameter table, or decision table from the chapter in markdown. -->
+## Reference Tables *(include whenever the chapter has decision/comparison/parameter tables — not only BOOK_TYPE=technical)*
+<!-- Prefer `<!-- table:Tnn -->` blocks from full_text.txt. Preserve author table titles and numbers.
+     Decision/comparison tables are mandatory when present. Do not drop numeric thresholds to save tokens. -->
+
+## Key Figures *(only when Step 2.7 produced notes for this chapter)*
+<!-- Bullet: **fig-id (kind)** — one actionable fact + provenance. Do not embed raw images.
+     Never let this section replace prose frameworks, cases, or thresholds. -->
 
 ## Worked Example *(DEPTH=study only — omit for DEPTH=reference)*
 <!-- Reproduce or reconstruct one concrete example the author works through: a
@@ -440,6 +486,7 @@ Prioritize, in order:
 3. **Trade-off matrices** — competing options scored on the dimensions the author cares about, so the reader can pick under their own constraints.
 4. **Thresholds & defaults** — the specific numbers, ratios, or rules of thumb the author commits to (e.g. "keep functions under ~20 lines", "alert when error budget < 10%").
 5. **Tells & smells** — fast heuristics for recognizing a situation ("if you see X, you're probably in trouble Y").
+6. **Figure-derived thresholds** — only when vision/caption recovered a real number or branch; cite fig id. Never invent. Never displace prose thresholds.
 
 Avoid: bare term→definition rows (that's the glossary), and prose paragraphs (that's the chapters). Every line should help the reader *decide* something.
 
@@ -568,6 +615,9 @@ Files generated:
   ─────────────────────────────────────────────────────
   Total skill size: ~X tokens (loaded on-demand, not all at once)
 
+🖼️ Visual coverage: <K>/<N> high-value figures distilled; <M> skipped (text-only/decorative/low confidence)
+   Model: <multimodal|text-only>
+
 💡 Tip: check your agent's session cost/usage command to see actual token usage.
 
 Usage:
@@ -645,3 +695,6 @@ Once the files are successfully written and merged, run **Step 9.5**, then proce
 6. **Chapter files are on-demand** — they don't count against skill budget until loaded
 7. **Never copy raw book text** — always synthesize, summarize, extract signal
 8. **Topic index is critical** — it's how the agent navigates to the right chapter file
+9. **Author precision over abstraction** — keep named protocols, numeric thresholds, and worked cases from the prose; visual notes are additive only
+10. **Do not invent visuals** — chart values and diagram topology require multimodal reading or explicit caption/OCR text
+11. **Disclose visual gaps** — when figures were skipped, say so in the final report

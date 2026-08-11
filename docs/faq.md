@@ -75,7 +75,9 @@ Run OCR first, then convert the output:
 ocrmypdf input.pdf output.pdf
 ```
 
-book-to-skill does not run OCR itself, and that is deliberate: it would mean a heavy dependency and a slow, lossy step for every user, to serve a case that a dedicated tool already handles better. The same applies to figures — text baked into diagrams and charts is not extracted from any format.
+book-to-skill does not run full-document OCR by default (use `ocrmypdf` for scans).
+
+**Figures/charts/tables:** optional `--extract-figures` (on by default in `--mode technical`) writes `figures.jsonl` + `assets/`, and normalizes recoverable grids to markdown. Distilling chart/diagram *values* still needs a **multimodal host model**. Text-only sessions keep captions/alt/native tables only and must disclose the gap — never invent visual numbers. Visual notes are **additive** and must not replace author-precise prose frameworks.
 
 ---
 
